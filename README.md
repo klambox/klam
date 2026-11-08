@@ -29,6 +29,14 @@ npx klambox registry [url|none|default]   # optional: use another registry (defa
 
 Every tool tracks `main` unless its registry entry sets `branch`.
 
+## Updating klambox itself
+
+- `npx klambox update` updates every installed tool **and** checks whether a newer klambox exists.
+- When a newer version is on npm, klambox prints one line on stderr (terminal only; it never pollutes piped output). The check runs at most once per 24h, has a 3s timeout, is silent when offline, and tool runs only read the cached result, so they are never slowed down.
+- `npx klambox self-update`: a global install runs `npm i -g klambox@latest`; under `npx` it explains that `npx klambox@latest <command>` always uses the newest version.
+- Turn the check off with `KLAM_NO_UPDATE_CHECK=1` (also off when `CI` or `NO_UPDATE_NOTIFIER` is set).
+- `registry.json` may carry `"minVersion"`: a klambox older than that prints a warning telling the user to update.
+
 ## Making a tool klam-compatible
 
 klam runs tools written in **Node.js** or **Python** (or a shell script) with no per-tool code in klam. A tool repo needs nothing special if it follows a convention; otherwise add a `klam.json` at the repo root.

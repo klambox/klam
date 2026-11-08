@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const HOME = process.env.KLAM_HOME || path.join(os.homedir(), '.klam');
 const TOOLS = path.join(HOME, 'tools');
@@ -13,7 +14,7 @@ const DEFAULT_REGISTRY = 'https://raw.githubusercontent.com/klambox/klam/main/re
 const DEFAULT_BRANCH = 'main';
 
 const RESERVED = ['list', 'ls', 'add', 'remove', 'rm', 'install', 'update', 'upgrade', 'status',
-  'path', 'run', 'registry', 'help'];
+  'path', 'run', 'registry', 'help', 'self-update'];
 
 const c = (n, s) => (process.stdout.isTTY ? `\x1b[${n}m${s}\x1b[0m` : s);
 const green = (s) => c(32, s), yellow = (s) => c(33, s), red = (s) => c(31, s), dim = (s) => c(2, s), bold = (s) => c(1, s);
@@ -25,7 +26,7 @@ function loadReg() {
   const file = readJson(REGISTRY, {});
   const cached = readJson(CACHE, {});
   const local = file.tools || {};
-  return { remote: file.remote, local, tools: { ...(cached.tools || {}), ...local } };
+  return { remote: file.remote, local, minVersion: cached.minVersion, tools: { ...(cached.tools || {}), ...local } };
 }
 function saveReg(r) {
   fs.mkdirSync(HOME, { recursive: true });
@@ -60,7 +61,7 @@ async function syncRemoteRegistry(quiet) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const remote = await res.json();
     fs.mkdirSync(HOME, { recursive: true });
-    fs.writeFileSync(CACHE, JSON.stringify({ tools: remote.tools || remote }, null, 2) + '\n');
+    fs.writeFileSync(CACHE, JSON.stringify({ minVersion: remote.minVersion, tools: remote.tools || remote }, null, 2) + '\n');
     if (!quiet) console.log(dim(`registry synced from ${url}`));
     return loadReg();
   } catch (e) {
@@ -298,11 +299,76 @@ function update(name, reg) {
   if (!ensureSetup(name, reg)) console.log(yellow(`! ${name}: setup failed; it will be retried on the next run`));
 }
 
+// ---------- klambox's own updates ----------
+const VERSION = readJson(new URL('../package.json', import.meta.url), {}).version || '0.0.0';
+const SCRIPT = fs.realpathSync(fileURLToPath(import.meta.url));
+const UPDATE_URL = process.env.KLAM_UPDATE_URL || 'https://registry.npmjs.org/klambox/latest';
+const UPDATE_CACHE = path.join(HOME, 'update-check.json'); // { checkedAt, latest }
+const DAY = 24 * 3600 * 1000;
+
+const parseVer = (v) => String(v).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0); // "0.0.0-stage" -> 0.0.0
+function isNewer(a, b) { // numeric a > b
+  const x = parseVer(a), y = parseVer(b);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+const updateChecksOff = () => !!(process.env.CI || process.env.NO_UPDATE_NOTIFIER || process.env.KLAM_NO_UPDATE_CHECK);
+
+// Cache only, never touches the network, so running a tool is never slowed down. stderr + TTY only: stdout stays clean for pipes.
+function printUpdateNotice() {
+  if (updateChecksOff() || !process.stderr.isTTY) return;
+  const latest = readJson(UPDATE_CACHE, {}).latest;
+  if (latest && isNewer(latest, VERSION)) {
+    console.error(yellow(`! klambox ${latest} is available (you have ${VERSION}). Update: npm i -g klambox@latest  (npx users: npx klambox@latest <command>)`));
+  }
+}
+
+// Ask npm for the latest version (at most once per 24h unless forced; short timeout; silent on any failure).
+async function refreshLatest({ force = false } = {}) {
+  if (updateChecksOff()) return;
+  const cached = readJson(UPDATE_CACHE, {});
+  if (!force && cached.checkedAt && Date.now() - cached.checkedAt < DAY) return;
+  let next = { ...cached, checkedAt: Date.now() }; // record the attempt so being offline does not cost a timeout on every run
+  try {
+    const res = await fetch(UPDATE_URL, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) { const { version } = await res.json(); if (version) next.latest = version; }
+  } catch {}
+  try { fs.mkdirSync(HOME, { recursive: true }); fs.writeFileSync(UPDATE_CACHE, JSON.stringify(next)); } catch {}
+}
+
+// The registry can require a newer klambox (e.g. it started using a field old clients ignore). Always warn, on stderr.
+function checkMinVersion(reg) {
+  if (reg.minVersion && isNewer(reg.minVersion, VERSION)) {
+    console.error(red(`✗ this registry needs klambox >= ${reg.minVersion} (you have ${VERSION}). Update: npm i -g klambox@latest  (npx users: npx klambox@latest <command>)`));
+  }
+}
+
+function selfUpdate() {
+  const cmd = ['npm', 'i', '-g', 'klambox@latest'];
+  const npxHint = 'npx klambox@latest <command>';
+  const npmGlobal = () => {
+    const r = WIN ? spawnSync('npm root -g', { encoding: 'utf8', shell: true }) : spawnSync('npm', ['root', '-g'], { encoding: 'utf8' });
+    return r.status === 0 ? r.stdout.trim() : '';
+  };
+  if (SCRIPT.split(path.sep).includes('_npx')) {
+    return console.log(`Running through npx (cached copy, version ${VERSION}). npx has nothing to update; to always use the newest:\n  ${npxHint}\nor install once:\n  ${cmd.join(' ')}`);
+  }
+  const root = npmGlobal();
+  if (root && SCRIPT.startsWith(fs.realpathSync(root) + path.sep)) {
+    console.log(dim(`$ ${cmd.join(' ')}`));
+    const r = WIN ? spawnSync(cmd.join(' '), { stdio: 'inherit', shell: true }) : spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
+    if (r.status === 0) return console.log(green('✓ done; check with: klambox --version'));
+    return console.log(red('✗ npm failed (permissions?). Run it yourself:') + `\n  ${cmd.join(' ')}`);
+  }
+  console.log(`This copy (${SCRIPT}) is neither an npx cache nor a global install. To use the newest:\n  ${cmd.join(' ')}\n  ${npxHint}`);
+}
+
 function help() {
   console.log(`${bold('klambox')} - manage & run GitHub Klam's tools
 (after: npm i -g klambox  you can type  klam  instead of  npx klambox)
 
   npx klambox --version | -v             print the klambox version
+  npx klambox self-update                update klambox itself (global install) or show how (npx)
   npx klambox list                       list tools and their status
   npx klambox add <name> <user/repo|url> [--branch b] [--entry file | --run "cmd"] [--desc "text"]
   npx klambox remove <name>              unregister and delete local copy
@@ -322,7 +388,12 @@ Dependencies are installed automatically: npm for package.json "dependencies", a
 
 async function main() {
   const [a, b, ...rest] = process.argv.slice(2);
-  if (a === '--version' || a === '-v' || a === '-V') return console.log(readJson(new URL('../package.json', import.meta.url), {}).version);
+  if (a === '--version' || a === '-v' || a === '-V') {
+    console.log(VERSION);
+    await refreshLatest();
+    return printUpdateNotice();
+  }
+  if (a === 'self-update') return selfUpdate();
   // `-help` (single dash) is accepted silently as an alias; --help / -h are the documented forms.
   if (!a || a === '--help' || a === '-h' || a === '-help' || (a === 'help' && !b)) return help();
   let reg = loadReg();
@@ -335,6 +406,8 @@ async function main() {
   if (!RESERVED.includes(a)) {
     if (reg.tools[a] === undefined) reg = await syncRemoteRegistry(true);
     need(reg, a);
+    printUpdateNotice();
+    checkMinVersion(reg);
     const sub = b;
     if (rest.length === 0 && ['-help', '--help', '-h'].includes(sub)) return showHelp(a, reg);
     if (sub === 'update') return update(a, reg);
@@ -348,6 +421,9 @@ async function main() {
   switch (a) {
     case 'list': case 'ls': {
       reg = await syncRemoteRegistry(true);
+      await refreshLatest();
+      printUpdateNotice();
+      checkMinVersion(reg);
       const names = Object.keys(reg.tools).sort();
       if (!names.length) return console.log('No tools yet. Add one: npx klambox add <name> <user/repo>');
       const w = Math.max(...names.map((n) => n.length));
@@ -379,6 +455,9 @@ async function main() {
     case 'install': return install(b, reg);
     case 'update': case 'upgrade': {
       reg = await syncRemoteRegistry(false);
+      await refreshLatest({ force: true });
+      printUpdateNotice();
+      checkMinVersion(reg);
       for (const n of Object.keys(reg.tools).sort()) update(n, reg);
       return;
     }
