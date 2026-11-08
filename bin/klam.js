@@ -235,7 +235,7 @@ function runTool(name, args, reg) {
   process.exit(r.status ?? 1);
 }
 
-// `klam <tool> -help`: the text always comes from the tool's own repo (so it updates with `klam update`), never from klam.
+// `klam <tool> --help`: the text always comes from the tool's own repo (so it updates with `klam update`), never from klam.
 // Source order: registry/klam.json "helpArgs" (run the tool with those args) > "help" file path > HELP.txt > HELP.md > help.txt > README.md (fallback).
 function showHelp(name, reg) {
   need(reg, name);
@@ -302,13 +302,14 @@ function help() {
   console.log(`${bold('klambox')} - manage & run GitHub Klam's tools
 (after: npm i -g klambox  you can type  klam  instead of  npx klambox)
 
+  npx klambox --version | -v             print the klambox version
   npx klambox list                       list tools and their status
   npx klambox add <name> <user/repo|url> [--branch b] [--entry file | --run "cmd"] [--desc "text"]
   npx klambox remove <name>              unregister and delete local copy
   npx klambox install <name>             clone a tool
   npx klambox update                     update registry + every installed tool
   npx klambox <name> [args...]           run a tool (auto-installs on first use)
-  npx klambox <name> -help               help of that tool (read from the tool's own repo)
+  npx klambox <name> --help              help of that tool (read from the tool's own repo; -h also works)
   npx klambox <name> update              git pull --ff-only one tool (read-only: klam never pushes)
   npx klambox <name> status | path | remove
   npx klambox run <name> [args...]       run (use when the tool name clashes with a command, or to pass --help to the tool itself)
@@ -321,6 +322,8 @@ Dependencies are installed automatically: npm for package.json "dependencies", a
 
 async function main() {
   const [a, b, ...rest] = process.argv.slice(2);
+  if (a === '--version' || a === '-v' || a === '-V') return console.log(readJson(new URL('../package.json', import.meta.url), {}).version);
+  // `-help` (single dash) is accepted silently as an alias; --help / -h are the documented forms.
   if (!a || a === '--help' || a === '-h' || a === '-help' || (a === 'help' && !b)) return help();
   let reg = loadReg();
   if (a === 'help') { // klam help <tool>

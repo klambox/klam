@@ -21,6 +21,8 @@ npx klambox shellnote [args]         # auto-clone on first use, then run
 npx klambox update                   # refresh the list + git pull --ff-only every installed tool
 npx klambox shellnote update         # update one tool
 npx klambox shellnote status|path|install|remove
+npx klambox shellnote --help        # the tool's own help, read from its repo
+npx klambox --version
 npx klambox add <name> <user/repo> [--branch b] [--run "cmd"] [--desc "..."]   # add a tool on this machine only
 npx klambox registry [url|none|default]   # optional: use another registry (default: klambox/klam on GitHub)
 ```
@@ -50,7 +52,7 @@ The tool runs in **your current directory** (so relative paths in arguments work
 
 ### Help
 
-`npx klambox <tool> -help` (also `--help`, `-h`, or `npx klambox help <tool>`) shows help **read from the tool's own repo**, so it follows `npx klambox update` and klam itself holds no help text. Source, first match wins:
+`npx klambox <tool> --help` (also `-h`, or `npx klambox help <tool>`) shows help **read from the tool's own repo**, so it follows `npx klambox update` and klam itself holds no help text. Source, first match wins:
 
 1. `klam.json` `"helpArgs": ["--help"]`: runs the tool itself with those arguments (use this when the tool prints its own help; do not use it for servers)
 2. `klam.json` `"help": "docs/help.txt"`, else `HELP.txt`, `HELP.md` or `help.txt` in the repo root
