@@ -1,0 +1,6 @@
+{
+  "tools": {
+    "shellnote": { "repo": "klambox/shellnote", "desc": "shell notes" },
+    "jmeter-monitoring": { "repo": "klambox/jmeter-monitoring", "desc": "JMeter monitoring" }
+  }
+}

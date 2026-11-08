@@ -1,0 +1,10 @@
+{
+  "name": "klambox",
+  "version": "0.1.0",
+  "description": "Manage and run your personal GitHub tools from any machine: npx klam <tool>",
+  "bin": { "klam": "bin/klam.js" },
+  "type": "module",
+  "files": ["bin"],
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
