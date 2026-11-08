@@ -1,8 +1,9 @@
 {
   "name": "klambox",
   "version": "0.1.0",
-  "description": "Manage and run your personal GitHub tools from any machine: npx klam <tool>",
+  "description": "Manage and run GitHub Klam's tools from any machine: npx klambox <tool>",
   "bin": {
+    "klambox": "bin/klam.js",
     "klam": "bin/klam.js"
   },
   "type": "module",

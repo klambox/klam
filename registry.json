@@ -1,6 +1,6 @@
 {
   "tools": {
-    "shellnote": { "repo": "klambox/shellnote", "desc": "shell notes" },
-    "jmeter-monitoring": { "repo": "klambox/jmeter-monitoring", "desc": "JMeter monitoring" }
+    "shellnote": { "repo": "klambox/shellnote", "branch": "main", "desc": "shell notes" },
+    "jmeter-monitoring": { "repo": "klambox/jmeter-monitoring", "branch": "main", "entry": "tool/live_monitor.py", "desc": "JMeter live monitoring (optional arg: report folder or CSV)" }
   }
 }
