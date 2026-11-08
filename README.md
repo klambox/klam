@@ -3,9 +3,9 @@
 Manage & run your personal GitHub tools from any machine.
 
 ```bash
-npx github:klambox/klambox list          # or `npx klambox ...` once published to npm
+npx github:klambox/klam list          # or `npx klambox ...` once published to npm
 klam add shellnote klambox/shellnote --desc "shell notes"
-klam registry https://raw.githubusercontent.com/klambox/klambox/main/registry.json   # share list across machines
+klam registry https://raw.githubusercontent.com/klambox/klam/main/registry.json   # share list across machines
 klam list
 klam update                # registry + all installed tools (git pull --ff-only)
 klam shellnote [args]      # auto-clone on first use, then run
